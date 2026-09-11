@@ -1,0 +1,13 @@
+{
+  "name": "@lending/e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser click-through of the dApp against a running local stack (see docs/testing.md)",
+  "scripts": {
+    "ui": "node ui-flow.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "24.43.1"
+  }
+}

@@ -1,0 +1,6 @@
+packages:
+  - shared
+  - indexer
+  - backend
+  - frontend
+  - e2e

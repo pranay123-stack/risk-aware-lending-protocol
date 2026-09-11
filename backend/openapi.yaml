@@ -1,0 +1,470 @@
+openapi: 3.0.3
+info:
+  title: Risk-Aware Lending Protocol API
+  version: 1.0.0
+  description: |
+    Read API over the lending protocol. Two sources, never mixed:
+
+    * **Live state** (markets, accounts, health factors, oracle health) is read from the chain
+      through `PoolLens` on every request (2 s cache for market-wide reads).
+    * **History** (events, liquidations, rate history, analytics) comes from PostgreSQL, filled
+      by the reorg-aware indexer. Risk classifications and alerts come from the risk monitor.
+
+    Every on-chain quantity is returned as an exact integer string (`raw`) plus display numbers.
+    Real-time updates: connect to `GET /ws` (WebSocket) for committed index batches, reorgs and
+    risk-alert changes.
+servers:
+  - url: http://localhost:4400
+tags:
+  - name: markets
+  - name: accounts
+  - name: protocol
+  - name: liquidations
+  - name: analytics
+  - name: risk
+  - name: oracle
+  - name: governance
+  - name: system
+
+components:
+  parameters:
+    Address:
+      name: address
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Address" }
+    Asset:
+      name: asset
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Address" }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+    Offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+  responses:
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Upstream:
+      description: Chain RPC or database unavailable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Address:
+      type: string
+      pattern: "^0x[0-9a-fA-F]{40}$"
+      example: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, example: INVALID_ADDRESS }
+            message: { type: string }
+    Amount:
+      type: object
+      description: An on-chain quantity. `raw` is exact (token base units); the others are for display.
+      properties:
+        raw: { type: string, example: "15000000000" }
+        amount: { type: number, example: 15000 }
+        usd: { type: number, example: 15000 }
+    RiskLevel:
+      type: string
+      enum: [SAFE, WARNING, DANGER, LIQUIDATABLE, UNKNOWN]
+      description: "SAFE HF>=1.5 or no debt; WARNING 1.2-1.5; DANGER 1.0-1.2; LIQUIDATABLE <1; UNKNOWN = an exposed oracle is down"
+    PriceStatus:
+      type: string
+      enum: [OK, OK_PRIMARY_ONLY, OK_FALLBACK, NOT_CONFIGURED, PAUSED, DEVIATION, UNAVAILABLE]
+    Market:
+      type: object
+      properties:
+        asset: { $ref: "#/components/schemas/Address" }
+        symbol: { type: string, example: USDC }
+        decimals: { type: integer, example: 6 }
+        price:
+          type: object
+          properties:
+            usd: { type: number }
+            raw: { type: string, description: "18-decimal USD" }
+            status: { $ref: "#/components/schemas/PriceStatus" }
+        totalSupplied: { $ref: "#/components/schemas/Amount" }
+        totalBorrowed: { $ref: "#/components/schemas/Amount" }
+        availableLiquidity: { $ref: "#/components/schemas/Amount" }
+        treasury: { $ref: "#/components/schemas/Amount" }
+        deficit: { $ref: "#/components/schemas/Amount" }
+        utilization: { type: number, example: 0.6346 }
+        supplyApr: { type: number }
+        supplyApy: { type: number }
+        borrowApr: { type: number }
+        borrowApy: { type: number }
+        config:
+          type: object
+          properties:
+            ltv: { type: number, example: 0.77 }
+            liquidationThreshold: { type: number, example: 0.8 }
+            liquidationBonus: { type: number, example: 0.045 }
+            reserveFactor: { type: number, example: 0.1 }
+            supplyCap: { type: string, description: "whole tokens, 0 = uncapped" }
+            borrowCap: { type: string }
+            active: { type: boolean }
+            frozen: { type: boolean }
+            paused: { type: boolean }
+            borrowingEnabled: { type: boolean }
+            collateralEnabled: { type: boolean }
+        interestRateModel:
+          type: object
+          properties:
+            address: { $ref: "#/components/schemas/Address" }
+            baseRate: { type: number }
+            slope1: { type: number }
+            slope2: { type: number }
+            optimalUtilization: { type: number }
+        indexes:
+          type: object
+          properties:
+            liquidity: { type: string, description: "ray, normalised to now" }
+            borrow: { type: string }
+    Health:
+      type: object
+      properties:
+        address: { $ref: "#/components/schemas/Address" }
+        priced: { type: boolean, description: "false if an exposed oracle is unavailable" }
+        healthFactor: { type: number, nullable: true, description: "null = no debt" }
+        healthFactorRaw: { type: string }
+        riskLevel: { $ref: "#/components/schemas/RiskLevel" }
+        distanceToLiquidation: { type: number, nullable: true, description: "collateral drop (fraction) that reaches HF = 1" }
+        totalCollateralUsd: { type: number }
+        totalDebtUsd: { type: number }
+        borrowCapacityUsd: { type: number }
+        availableToBorrowUsd: { type: number }
+        liquidationThresholdUsd: { type: number }
+        averageLtv: { type: number }
+        averageLiquidationThreshold: { type: number }
+    Position:
+      type: object
+      properties:
+        asset: { $ref: "#/components/schemas/Address" }
+        symbol: { type: string }
+        decimals: { type: integer }
+        supplied: { $ref: "#/components/schemas/Amount" }
+        borrowed: { $ref: "#/components/schemas/Amount" }
+        collateralEnabled: { type: boolean }
+        walletBalance: { $ref: "#/components/schemas/Amount" }
+        allowance: { type: string, description: "ERC-20 allowance to the pool (raw units)" }
+        maxBorrow: { $ref: "#/components/schemas/Amount" }
+        maxWithdraw: { $ref: "#/components/schemas/Amount" }
+        supplyApy: { type: number }
+        borrowApy: { type: number }
+    Event:
+      type: object
+      properties:
+        tx_hash: { type: string }
+        log_index: { type: integer }
+        block_number: { type: integer }
+        block_time: { type: string, format: date-time }
+        name: { type: string }
+        args: { type: object, additionalProperties: true }
+
+paths:
+  /health:
+    get:
+      tags: [system]
+      summary: Liveness, dependency status and indexer lag
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok, degraded] }
+                  database: { type: string }
+                  chain: { type: string }
+                  chainHead: { type: integer }
+                  indexedBlock: { type: integer, nullable: true }
+                  indexerLagBlocks: { type: integer, nullable: true }
+        "503": { description: A dependency is down }
+  /config:
+    get:
+      tags: [system]
+      summary: Chain id and deployed contract addresses
+      responses:
+        "200": { description: Deployment configuration }
+  /events:
+    get:
+      tags: [system]
+      summary: Recent indexed protocol events
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - { name: name, in: query, schema: { type: string, example: LiquidationCall } }
+      responses:
+        "200":
+          description: Events, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events: { type: array, items: { $ref: "#/components/schemas/Event" } }
+
+  /markets:
+    get:
+      tags: [markets]
+      summary: Every listed market, live
+      responses:
+        "200":
+          description: Markets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  markets: { type: array, items: { $ref: "#/components/schemas/Market" } }
+        "502": { $ref: "#/components/responses/Upstream" }
+  /markets/{asset}:
+    get:
+      tags: [markets]
+      summary: One market with its rate curve and rate history
+      parameters: [{ $ref: "#/components/parameters/Asset" }]
+      responses:
+        "200":
+          description: Market detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  market: { $ref: "#/components/schemas/Market" }
+                  rateCurve:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        utilization: { type: number }
+                        borrowApr: { type: number }
+                        supplyApr: { type: number }
+                  rateHistory: { type: array, items: { type: object } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /accounts/{address}:
+    get:
+      tags: [accounts]
+      summary: Account health and non-empty positions, live
+      parameters: [{ $ref: "#/components/parameters/Address" }]
+      responses:
+        "200":
+          description: Account
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Health"
+                  - type: object
+                    properties:
+                      blockNumber: { type: integer }
+                      positions: { type: array, items: { $ref: "#/components/schemas/Position" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /accounts/{address}/positions:
+    get:
+      tags: [accounts]
+      summary: Position in every market, including wallet balance and max borrow / withdraw
+      parameters: [{ $ref: "#/components/parameters/Address" }]
+      responses:
+        "200":
+          description: Positions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  address: { $ref: "#/components/schemas/Address" }
+                  positions: { type: array, items: { $ref: "#/components/schemas/Position" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /accounts/{address}/health-factor:
+    get:
+      tags: [accounts]
+      summary: Health factor and risk level
+      parameters: [{ $ref: "#/components/parameters/Address" }]
+      responses:
+        "200":
+          description: Health factor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  address: { $ref: "#/components/schemas/Address" }
+                  blockNumber: { type: integer }
+                  priced: { type: boolean }
+                  healthFactor: { type: number, nullable: true }
+                  healthFactorRaw: { type: string }
+                  riskLevel: { $ref: "#/components/schemas/RiskLevel" }
+                  distanceToLiquidation: { type: number, nullable: true }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /accounts/{address}/history:
+    get:
+      tags: [accounts]
+      summary: The account's protocol events (supply, borrow, repay, withdraw, liquidations)
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200": { description: Events, newest first }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /protocol/tvl:
+    get:
+      tags: [protocol]
+      summary: Total value supplied, borrowed and available
+      description: "tvlUsd = total supplied (collateral + lendable liquidity). availableLiquidityUsd = supplied - borrowed."
+      responses:
+        "200": { description: Totals }
+  /protocol/utilization:
+    get:
+      tags: [protocol]
+      summary: Aggregate and per-market utilization
+      responses:
+        "200": { description: Utilization }
+  /protocol/borrow-rate:
+    get:
+      tags: [protocol]
+      summary: Borrow APR / APY per market
+      responses:
+        "200": { description: Borrow rates }
+  /protocol/supply-rate:
+    get:
+      tags: [protocol]
+      summary: Supply APR / APY per market
+      responses:
+        "200": { description: Supply rates }
+  /protocol/status:
+    get:
+      tags: [protocol]
+      summary: Pause state, liquidation grace window and timelock delay
+      responses:
+        "200": { description: Status }
+
+  /liquidations:
+    get:
+      tags: [liquidations]
+      summary: Executed liquidations, valued at the prices of their block
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - { name: borrower, in: query, schema: { $ref: "#/components/schemas/Address" } }
+        - { name: liquidator, in: query, schema: { $ref: "#/components/schemas/Address" } }
+      responses:
+        "200": { description: Liquidations, newest first }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /liquidations/preview:
+    get:
+      tags: [liquidations]
+      summary: Simulate a liquidation with the pool's own maths
+      parameters:
+        - { name: borrower, in: query, required: true, schema: { $ref: "#/components/schemas/Address" } }
+        - { name: collateral, in: query, required: true, schema: { $ref: "#/components/schemas/Address" } }
+        - { name: debt, in: query, required: true, schema: { $ref: "#/components/schemas/Address" } }
+        - { name: amount, in: query, schema: { type: string, description: "debt to cover in token units; default = max" } }
+      responses:
+        "200": { description: Preview (debt repaid, collateral seized, close factor, profit) }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /liquidations/candidates:
+    get:
+      tags: [liquidations]
+      summary: At-risk accounts, re-checked live, with the most profitable liquidation available now
+      parameters: [{ $ref: "#/components/parameters/Limit" }]
+      responses:
+        "200": { description: Candidates }
+
+  /analytics:
+    get:
+      tags: [analytics]
+      summary: Totals plus TVL, utilization, rate and activity history
+      parameters:
+        - { name: hours, in: query, schema: { type: integer, minimum: 1, maximum: 720, default: 24 } }
+      responses:
+        "200": { description: Analytics }
+
+  /risk/summary:
+    get:
+      tags: [risk]
+      summary: Accounts and debt per risk level, potential bad debt, open alerts
+      responses:
+        "200": { description: Summary }
+  /risk/accounts:
+    get:
+      tags: [risk]
+      summary: Indebted accounts from the latest monitor sweep, riskiest first
+      parameters:
+        - { name: level, in: query, schema: { $ref: "#/components/schemas/RiskLevel" } }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200": { description: Accounts }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /risk/alerts:
+    get:
+      tags: [risk]
+      summary: Monitor alerts
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [open, resolved, all], default: open } }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200": { description: Alerts }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /risk/markets:
+    get:
+      tags: [risk]
+      summary: Live market risk findings (utilization, liquidity, oracle health, bad debt)
+      responses:
+        "200": { description: Market findings }
+
+  /oracle/prices:
+    get:
+      tags: [oracle]
+      summary: Resolved price and per-feed health, age and heartbeat for every asset
+      responses:
+        "200": { description: Oracle state }
+  /oracle/history:
+    get:
+      tags: [oracle]
+      summary: Indexed feed updates
+      parameters:
+        - { name: asset, in: query, schema: { $ref: "#/components/schemas/Address" } }
+      responses:
+        "200": { description: Price updates, newest first }
+
+  /governance/timelock:
+    get:
+      tags: [governance]
+      summary: Timelocked operations with decoded calls, status and ETA
+      responses:
+        "200": { description: Operations }
+
+  /ws:
+    get:
+      tags: [system]
+      summary: WebSocket stream
+      description: |
+        Messages are JSON objects with a `channel`:
+        `lending_events` (`type: events` with block range, counts and liquidations; `type: reorg`),
+        `risk_alerts` (`type: alerts` with opened / resolved alerts and level counts).
+      responses:
+        "101": { description: Switching protocols }

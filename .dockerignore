@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/.next
+**/*.tsbuildinfo
+out
+cache
+broadcast
+lib
+test-results
+e2e/output
+snapshots
+.git
+.env
+deployments/*.json

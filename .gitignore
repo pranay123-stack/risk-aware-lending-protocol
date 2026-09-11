@@ -1,0 +1,28 @@
+# Foundry
+out/
+cache/
+broadcast/
+snapshots/*.json.bak
+
+# Node
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
+next-env.d.ts
+
+# Local outputs
+test-results/
+e2e/output/
+deployments/*.json
+!deployments/.gitkeep
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,14 @@
+{
+  "borrow (first)": "155751",
+  "borrow (subsequent)": "74429",
+  "disable collateral (no debt)": "8142",
+  "liquidate (50% close factor, underlying)": "134566",
+  "liquidate (collateral exhausted: bad-debt write-off)": "167286",
+  "liquidate (receiveSupply)": "154671",
+  "repay (full)": "39769",
+  "repay (partial)": "39743",
+  "supply (first, enables collateral)": "111983",
+  "supply (subsequent)": "26156",
+  "withdraw (collateral, with debt: LTV check)": "63370",
+  "withdraw (no debt, no oracle read)": "25281"
+}

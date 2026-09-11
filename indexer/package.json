@@ -1,0 +1,25 @@
+{
+  "name": "@lending/indexer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@lending/shared": "workspace:*",
+    "pg": "8.23.0",
+    "viem": "2.56.3"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

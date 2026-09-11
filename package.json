@@ -1,0 +1,20 @@
+{
+  "name": "risk-aware-lending",
+  "private": true,
+  "description": "Risk-aware DeFi lending protocol: Foundry contracts, TypeScript indexer/API/risk monitor, Next.js dashboard",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20.9"
+  },
+  "scripts": {
+    "abis": "node scripts/export-abis.mjs",
+    "build": "pnpm -r --filter=!@lending/frontend build",
+    "build:all": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r --filter=!@lending/frontend test",
+    "db:migrate": "pnpm --filter @lending/shared migrate",
+    "indexer": "pnpm --filter @lending/indexer start",
+    "api": "pnpm --filter @lending/backend start:api",
+    "monitor": "pnpm --filter @lending/backend start:monitor"
+  }
+}

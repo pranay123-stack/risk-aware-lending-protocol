@@ -1,0 +1,124 @@
+# Full local stack: Anvil -> deployer (Foundry) -> Postgres -> indexer / API / risk monitor -> frontend.
+#
+#   docker compose up --build        # first run: deploys the protocol and runs the demo scenario
+#   open http://localhost:3400
+#
+# Everything binds to 127.0.0.1 only. Mock tokens, mock oracles, Anvil's public test keys:
+# no real funds, keys or assets are involved anywhere.
+name: risk-aware-lending
+
+x-node-env: &node-env
+  RPC_URL: http://anvil:8545
+  DATABASE_URL: postgres://lending:lending@postgres:5432/lending
+  DEPLOYMENT_FILE: /deployments/31337.json
+  LOG_LEVEL: info
+
+services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:v1.5.1
+    user: "0"
+    entrypoint: ["anvil"]
+    # Auto-mining (instant confirmations for the UI). The chain state is dumped to a volume every 10 s
+    # and reloaded on restart, so `docker compose restart` keeps the deployed protocol.
+    command: ["--host", "0.0.0.0", "--port", "8545", "--chain-id", "31337", "--state", "/state/anvil.json", "--state-interval", "10"]
+    ports: ["127.0.0.1:${ANVIL_PORT:-8545}:8545"]
+    volumes: ["anvil-state:/state"]
+    healthcheck:
+      test: ["CMD", "cast", "block-number", "--rpc-url", "http://localhost:8545"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  deployer:
+    image: ghcr.io/foundry-rs/foundry:v1.5.1
+    # Runs as your user so nothing root-owned lands in the repo.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    working_dir: /repo
+    entrypoint: ["/bin/sh", "docker/deploy.sh"]
+    environment:
+      RPC_URL: http://anvil:8545
+      DEPLOYMENT_OUT: /repo/deployments/31337.json
+      DEPLOYMENT_FILE: /repo/deployments/31337.json
+      HOME: /repo/cache/docker/home
+      FOUNDRY_OUT: /repo/cache/docker/out
+      FOUNDRY_CACHE_PATH: /repo/cache/docker/cache
+      RUN_DEMO: "${RUN_DEMO:-true}"
+    volumes: [".:/repo"]
+    depends_on:
+      anvil: { condition: service_healthy }
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lending
+      POSTGRES_PASSWORD: lending
+      POSTGRES_DB: lending
+    ports: ["127.0.0.1:${PG_PORT:-5475}:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lending -d lending"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  indexer:
+    build: { context: ., dockerfile: docker/node.Dockerfile, target: services }
+    command: ["node", "indexer/dist/main.js"]
+    working_dir: /app
+    environment: *node-env
+    volumes: ["./deployments:/deployments:ro"]
+    restart: unless-stopped
+    depends_on:
+      deployer: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+
+  api:
+    build: { context: ., dockerfile: docker/node.Dockerfile, target: services }
+    command: ["node", "backend/dist/api.js"]
+    environment:
+      <<: *node-env
+      API_PORT: "4400"
+      CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3400},http://127.0.0.1:${FRONTEND_PORT:-3400}
+    ports: ["127.0.0.1:${API_PORT:-4400}:4400"]
+    volumes: ["./deployments:/deployments:ro"]
+    restart: unless-stopped
+    depends_on:
+      deployer: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+    healthcheck:
+      # 127.0.0.1, not localhost: Alpine resolves localhost to ::1 first and the API listens on IPv4.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4400/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  monitor:
+    build: { context: ., dockerfile: docker/node.Dockerfile, target: services }
+    command: ["node", "backend/dist/monitor.js"]
+    environment:
+      <<: *node-env
+      # Re-posts mock feed answers before they go stale (local chain only; never changes a price).
+      PRICE_KEEPER_ENABLED: "true"
+    volumes: ["./deployments:/deployments:ro"]
+    restart: unless-stopped
+    depends_on:
+      deployer: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/node.Dockerfile
+      target: frontend
+      args:
+        # Inlined into the browser bundle: these are the host-published ports.
+        NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-4400}
+        NEXT_PUBLIC_RPC_URL: http://localhost:${ANVIL_PORT:-8545}
+    ports: ["127.0.0.1:${FRONTEND_PORT:-3400}:3400"]
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  anvil-state:
+  pgdata:

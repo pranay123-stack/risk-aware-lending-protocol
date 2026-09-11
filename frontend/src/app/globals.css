@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * Design tokens. Dark is the default look; light is a selected theme, not an automatic inversion.
+ * Chart series slots are the validated categorical palette (checked with the dataviz validator
+ * against these exact card surfaces: dark #15181d passes every check; light #ffffff passes with
+ * a sub-3:1 contrast warning on slots 3-5, relieved by legends + table views on every chart).
+ * Status colors are reserved for state and always ship with an icon and a label.
+ */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0c0e11;
+  --surface-1: #15181d;
+  --surface-2: #1b1f25;
+  --surface-3: #232830;
+  --border: #242a32;
+  --border-strong: #333a45;
+  --text-primary: #f2f3f5;
+  --text-secondary: #a8aebb;
+  --text-muted: #6e7583;
+  --accent: #7c6cf0;
+  --accent-hover: #8f81f5;
+  --accent-soft: rgba(124, 108, 240, 0.14);
+  --grid: #232830;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --neutral: #7a818c;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f5f7;
+  --surface-1: #ffffff;
+  --surface-2: #f6f7f9;
+  --surface-3: #eceef2;
+  --border: #e3e6eb;
+  --border-strong: #cfd4dc;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #85868a;
+  --accent: #5b4bd8;
+  --accent-hover: #4a3aa7;
+  --accent-soft: rgba(91, 75, 216, 0.1);
+  --grid: #eceef2;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-fg: var(--text-primary);
+  --color-fg-2: var(--text-secondary);
+  --color-fg-3: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-good: var(--good);
+  --color-warning: var(--warning);
+  --color-serious: var(--serious);
+  --color-critical: var(--critical);
+  --color-neutral: var(--neutral);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numbers in tables line up; hero figures stay proportional (dataviz: no tabular-nums on big numbers). */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Recharts: recessive hairline grid, crosshair cursor. */
+.recharts-cartesian-grid line {
+  stroke: var(--grid);
+}
+.recharts-text {
+  fill: var(--text-muted);
+  font-size: 11px;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

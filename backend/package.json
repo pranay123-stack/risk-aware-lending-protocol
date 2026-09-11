@@ -1,0 +1,35 @@
+{
+  "name": "@lending/backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start:api": "node dist/api.js",
+    "start:monitor": "node dist/monitor.js",
+    "dev:api": "tsx watch src/api.ts",
+    "dev:monitor": "tsx watch src/monitor.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/cors": "11.3.0",
+    "@fastify/swagger": "9.8.1",
+    "@fastify/swagger-ui": "6.1.1",
+    "@fastify/websocket": "11.3.0",
+    "@lending/shared": "workspace:*",
+    "fastify": "5.12.4",
+    "pg": "8.23.0",
+    "viem": "2.56.3"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "@types/pg": "8.23.1",
+    "@types/ws": "8.18.1",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7",
+    "ws": "8.18.3",
+    "yaml": "2.8.1"
+  }
+}
